@@ -1,0 +1,95 @@
+{
+  "name": "serialpilot-vscode",
+  "displayName": "Serial Pilot",
+  "description": "AI-powered embedded serial debugging assistant — let AI read serial logs, analyze issues, and form a debug loop",
+  "version": "1.0.1",
+  "publisher": "serialpilot",
+  "private": true,
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "serialpilot",
+          "title": "Serial Pilot",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "serialpilot": [
+        {
+          "type": "webview",
+          "id": "serialpilot.serialPanel",
+          "name": "Serial Monitor"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "serialpilot.refreshPorts",
+        "title": "Refresh Serial Ports",
+        "category": "Serial Pilot",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "serialpilot.disconnect",
+        "title": "Disconnect Serial Port",
+        "category": "Serial Pilot"
+      },
+      {
+        "command": "serialpilot.clearLog",
+        "title": "Clear Serial Log",
+        "category": "Serial Pilot"
+      },
+      {
+        "command": "serialpilot.toggleConnection",
+        "title": "Toggle Serial Connection",
+        "category": "Serial Pilot"
+      },
+      {
+        "command": "serialpilot.toggleBridge",
+        "title": "Toggle MCP Bridge Server",
+        "category": "Serial Pilot"
+      }
+    ],
+    "menus": {}
+  },
+  "scripts": {
+    "vscode:prepublish": "webpack --config webpack.config.js",
+    "build": "webpack --config webpack.config.js",
+    "pack": "node pack.js",
+    "clean": "rimraf dist",
+    "watch": "tsc -p tsconfig.json -w"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/serialpilot/serial-pilot"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "@types/vscode": "^1.85.0",
+    "@vercel/ncc": "^0.38.4",
+    "node-loader": "^2.1.0",
+    "rimraf": "^5.0.0",
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.5.0",
+    "webpack": "^5.105.3",
+    "webpack-cli": "^6.0.1"
+  }
+}
