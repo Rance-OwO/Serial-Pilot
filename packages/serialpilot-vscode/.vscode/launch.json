@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Serial Pilot Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/serialpilot-vscode"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/packages/serialpilot-vscode/dist/**/*.js"
+      ],
+      "preLaunchTask": "npm: build - packages/serialpilot-vscode"
+    }
+  ]
+}
