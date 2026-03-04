@@ -545,6 +545,13 @@ export function activate(context: vscode.ExtensionContext) {
       }
     })
   );
+
+  // 右上角按钮：打开 Serial Pilot 侧边栏
+  context.subscriptions.push(
+    vscode.commands.registerCommand('serialpilot.openInTab', () => {
+      vscode.commands.executeCommand('workbench.view.extension.serialpilot');
+    })
+  );
 }
 
 export async function deactivate(): Promise<void> {
@@ -815,6 +822,18 @@ class SerialPanelProvider implements vscode.WebviewViewProvider {
         <datalist id="baudrate-list">${baudrateOptions}</datalist>
       </div>
     </div>
+    <!-- Line Ending（与 Advanced 同级） -->
+    <div class="config-row">
+      <label>End</label>
+      <div class="config-control">
+        <select id="line-ending-select" title="Line ending for send">
+          <option value="none" selected>None</option>
+          <option value="lf">LF (\\n)</option>
+          <option value="crlf">CRLF (\\r\\n)</option>
+          <option value="cr">CR (\\r)</option>
+        </select>
+      </div>
+    </div>
     <!-- 高级参数（折叠） -->
     <details id="advanced-config">
       <summary>Advanced</summary>
@@ -849,7 +868,7 @@ class SerialPanelProvider implements vscode.WebviewViewProvider {
     <button id="btn-clear" class="btn-secondary">Clear</button>
   </div>
 
-  <!-- 选项栏：时间戳 / HEX / 换行符 -->
+  <!-- 选项栏：时间戳 / HEX / Echo -->
   <div class="options-bar">
     <label class="option-item" title="Show timestamp on each line">
       <input type="checkbox" id="opt-timestamp" />
@@ -863,12 +882,6 @@ class SerialPanelProvider implements vscode.WebviewViewProvider {
       <input type="checkbox" id="opt-echo" checked />
       <span>Echo</span>
     </label>
-    <select id="line-ending-select" class="small-select" title="Line ending for send">
-      <option value="lf">LF</option>
-      <option value="crlf">CRLF</option>
-      <option value="cr">CR</option>
-      <option value="none">None</option>
-    </select>
   </div>
 
   <!-- 内容区域：日志 + 拖拽手柄 + 发送 -->

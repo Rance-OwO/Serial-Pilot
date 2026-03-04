@@ -17,7 +17,7 @@ Thumbs.db
 *.tgz
 
 # VS Code Extension
-*.vsix
+# *.vsix
 
 # Keil Project - freertos_hello
 _KeilProject/freertos_hello/

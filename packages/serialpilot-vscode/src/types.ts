@@ -32,7 +32,7 @@ export const DEFAULT_CONFIG: SerialConfig = {
   dataBits: 8,
   parity: 'none',
   stopBits: 1,
-  lineEnding: 'lf',
+  lineEnding: 'none',
   showTimestamp: false,
   hexMode: false,
 };

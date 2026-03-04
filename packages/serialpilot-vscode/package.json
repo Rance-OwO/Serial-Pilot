@@ -2,7 +2,7 @@
   "name": "serialpilot-vscode",
   "displayName": "Serial Pilot",
   "description": "AI-powered embedded serial debugging assistant — let AI read serial logs, analyze issues, and form a debug loop",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "publisher": "serialpilot",
   "private": true,
   "license": "MIT",
@@ -63,9 +63,26 @@
         "command": "serialpilot.toggleBridge",
         "title": "Toggle MCP Bridge Server",
         "category": "Serial Pilot"
+      },
+      {
+        "command": "serialpilot.openInTab",
+        "title": "Open Serial Pilot",
+        "category": "Serial Pilot",
+        "icon": {
+          "light": "media/icon-light.svg",
+          "dark": "media/icon.svg"
+        }
       }
     ],
-    "menus": {}
+    "menus": {
+      "editor/title": [
+        {
+          "command": "serialpilot.openInTab",
+          "group": "navigation",
+          "when": "true"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "webpack --config webpack.config.js",
