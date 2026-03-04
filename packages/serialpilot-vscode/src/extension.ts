@@ -546,10 +546,48 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // 右上角按钮：打开 Serial Pilot 侧边栏
+  // 右上角按钮：在右侧标签页打开 Serial Pilot
   context.subscriptions.push(
-    vscode.commands.registerCommand('serialpilot.openInTab', () => {
-      vscode.commands.executeCommand('workbench.view.extension.serialpilot');
+    vscode.commands.registerCommand('serialpilot.openInTab', async () => {
+      // 如果已有面板，直接显示
+      if (provider.panel) {
+        provider.panel.reveal(vscode.ViewColumn.Two);
+        return;
+      }
+
+      // 获取当前可见编辑器的列数
+      const hasVisibleEditors = vscode.window.visibleTextEditors.length > 0;
+
+      // 在右侧创建新编辑器组
+      if (hasVisibleEditors) {
+        await vscode.commands.executeCommand('workbench.action.newGroupRight');
+      }
+
+      // 创建 Webview 面板
+      const panel = vscode.window.createWebviewPanel(
+        SerialPanelProvider.panelViewType,
+        'Serial Pilot',
+        hasVisibleEditors ? vscode.ViewColumn.Two : vscode.ViewColumn.One,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots: [context.extensionUri],
+        }
+      );
+
+      // 设置图标
+      panel.iconPath = {
+        light: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon-light.svg'),
+        dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'icon.svg'),
+      };
+
+      // 解析面板（复用 Provider 的 HTML 和消息处理逻辑）
+      provider.resolveWebviewPanel(panel);
+
+      // 面板关闭时清理
+      panel.onDidDispose(() => {
+        provider.clearPanel();
+      });
     })
   );
 }
@@ -578,11 +616,18 @@ export async function deactivate(): Promise<void> {
 class SerialPanelProvider implements vscode.WebviewViewProvider {
 
   public static readonly viewType = 'serialpilot.serialPanel';
+  public static readonly panelViewType = 'serialpilot.serialPanel.tab';
   private _view?: vscode.WebviewView;
+  private _panel?: vscode.WebviewPanel; // 独立面板（右侧标签页）
   private readonly _context: vscode.ExtensionContext;
 
   constructor(context: vscode.ExtensionContext) {
     this._context = context;
+  }
+
+  /** 获取独立面板（用于外部检查） */
+  get panel(): vscode.WebviewPanel | undefined {
+    return this._panel;
   }
 
   // ---- 持久化 ----
@@ -644,87 +689,8 @@ class SerialPanelProvider implements vscode.WebviewViewProvider {
       },
     });
 
-    // ---- 监听 Webview 消息 ----
-    webviewView.webview.onDidReceiveMessage(async (data) => {
-      switch (data.type) {
-
-        case 'refreshPorts': {
-          try {
-            const ports = await serialManager.listPorts();
-            this.postMessage({ type: 'updatePorts', ports });
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            vscode.window.showErrorMessage(`[Serial Pilot] Scan failed: ${msg}`);
-          }
-          break;
-        }
-
-        case 'connect': {
-          const { port, baudRate, dataBits, parity, stopBits } = data;
-          if (!port) {
-            vscode.window.showWarningMessage('[Serial Pilot] Please select a serial port first');
-            return;
-          }
-          // 合并连接参数与当前显示设置
-          const currentCfg = serialManager.config;
-          const config: SerialConfig = {
-            port,
-            baudRate: baudRate ?? 115200,
-            dataBits: dataBits ?? 8,
-            parity: parity ?? 'none',
-            stopBits: stopBits ?? 1,
-            lineEnding: currentCfg.lineEnding,
-            showTimestamp: currentCfg.showTimestamp,
-            hexMode: currentCfg.hexMode,
-          };
-          this._saveConfig(config);
-          await serialManager.connect(config);
-          break;
-        }
-
-        case 'disconnect': {
-          await serialManager.disconnect();
-          break;
-        }
-
-        case 'clearLog': {
-          serialManager.clearLog();
-          serialManager.resetCounters();
-          this.postMessage({ type: 'clearLog' });
-          break;
-        }
-
-        case 'sendData': {
-          const cfg = serialManager.config;
-          // hexSend 独立于 hexMode（显示），由 Webview 发送区的 checkbox 控制
-          const hexSend = data.hexSend ?? false;
-          await serialManager.send(data.text, hexSend, cfg.lineEnding);
-          break;
-        }
-
-        case 'updateSettings': {
-          // 运行时切换显示选项（时间戳、HEX、换行符）
-          const partial: Partial<SerialConfig> = {};
-          if (data.showTimestamp !== undefined) { partial.showTimestamp = data.showTimestamp; }
-          if (data.hexMode !== undefined) { partial.hexMode = data.hexMode; }
-          if (data.lineEnding !== undefined) { partial.lineEnding = data.lineEnding; }
-          serialManager.updateSettings(partial);
-          this._saveConfig(partial);
-          break;
-        }
-
-        case 'saveSendHistory': {
-          this._saveSendHistory(data.history ?? []);
-          break;
-        }
-
-        case 'saveConfig': {
-          // Webview 中切换的串口参数也持久化
-          if (data.config) { this._saveConfig(data.config); }
-          break;
-        }
-      }
-    });
+    // ---- 监听 Webview 消息（复用共享处理器）----
+    this._setupWebviewMessageHandler(webviewView.webview);
 
     // ---- 初始化 ----
 
@@ -758,6 +724,164 @@ class SerialPanelProvider implements vscode.WebviewViewProvider {
 
   public postMessage(message: Record<string, unknown>) {
     this._view?.webview.postMessage(message);
+    this._panel?.webview.postMessage(message);
+  }
+
+  /** 清理独立面板引用 */
+  public clearPanel(): void {
+    this._panel = undefined;
+  }
+
+  /** 创建独立面板（用于右侧标签页） */
+  public resolveWebviewPanel(panel: vscode.WebviewPanel): void {
+    this._panel = panel;
+
+    panel.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this._context.extensionUri],
+    };
+
+    panel.webview.html = this._getHtmlForWebview(panel.webview);
+
+    // 加载持久化配置
+    const savedConfig = this._loadConfig();
+    serialManager.updateSettings(savedConfig);
+
+    // 设置回调
+    serialManager.setCallbacks({
+      onLog: (text) => {
+        this.postMessage({ type: 'appendLog', text });
+      },
+      onStatus: (connected, portPath, baudRate) => {
+        this.postMessage({
+          type: 'updateStatus',
+          connected,
+          port: portPath ?? '',
+          baudRate: baudRate ?? 0,
+        });
+        updateStatusBar(connected, portPath, baudRate);
+      },
+      onError: (msg) => {
+        vscode.window.showErrorMessage(`[Serial Pilot] ${msg}`);
+        this.postMessage({ type: 'appendLog', text: `[ERROR] ${msg}\n` });
+      },
+      onCounterUpdate: (rx, tx) => {
+        this.postMessage({ type: 'updateCounters', rx, tx });
+      },
+    });
+
+    // 监听消息（复用侧边栏的消息处理逻辑）
+    this._setupWebviewMessageHandler(panel.webview);
+
+    // 初始化
+    serialManager.listPorts().then((ports) => {
+      this.postMessage({ type: 'updatePorts', ports });
+    }).catch(() => { /* ignore */ });
+
+    this.postMessage({
+      type: 'restoreConfig',
+      config: savedConfig,
+      sendHistory: this._loadSendHistory(),
+    });
+
+    if (serialManager.isConnected) {
+      this.postMessage({
+        type: 'updateStatus',
+        connected: true,
+        port: serialManager.currentPath,
+        baudRate: serialManager.currentBaudRate,
+      });
+      this.postMessage({
+        type: 'updateCounters',
+        rx: serialManager.rxBytes,
+        tx: serialManager.txBytes,
+      });
+    }
+
+    // 面板关闭时清理
+    panel.onDidDispose(() => {
+      this._panel = undefined;
+    });
+  }
+
+  /** 设置 Webview 消息处理（供侧边栏和独立面板复用） */
+  private _setupWebviewMessageHandler(webview: vscode.Webview): void {
+    webview.onDidReceiveMessage(async (data) => {
+      switch (data.type) {
+
+        case 'refreshPorts': {
+          try {
+            const ports = await serialManager.listPorts();
+            this.postMessage({ type: 'updatePorts', ports });
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`[Serial Pilot] Scan failed: ${msg}`);
+          }
+          break;
+        }
+
+        case 'connect': {
+          const { port, baudRate, dataBits, parity, stopBits } = data;
+          if (!port) {
+            vscode.window.showWarningMessage('[Serial Pilot] Please select a serial port first');
+            return;
+          }
+          const currentCfg = serialManager.config;
+          const config: SerialConfig = {
+            port,
+            baudRate: baudRate ?? 115200,
+            dataBits: dataBits ?? 8,
+            parity: parity ?? 'none',
+            stopBits: stopBits ?? 1,
+            lineEnding: currentCfg.lineEnding,
+            showTimestamp: currentCfg.showTimestamp,
+            hexMode: currentCfg.hexMode,
+          };
+          this._saveConfig(config);
+          await serialManager.connect(config);
+          break;
+        }
+
+        case 'disconnect': {
+          await serialManager.disconnect();
+          break;
+        }
+
+        case 'clearLog': {
+          serialManager.clearLog();
+          serialManager.resetCounters();
+          this.postMessage({ type: 'clearLog' });
+          break;
+        }
+
+        case 'sendData': {
+          const cfg = serialManager.config;
+          const hexSend = data.hexSend ?? false;
+          await serialManager.send(data.text, hexSend, cfg.lineEnding);
+          break;
+        }
+
+        case 'updateSettings': {
+          const partial: Partial<SerialConfig> = {};
+          if (data.showTimestamp !== undefined) { partial.showTimestamp = data.showTimestamp; }
+          if (data.hexMode !== undefined) { partial.hexMode = data.hexMode; }
+          if (data.lineEnding !== undefined) { partial.lineEnding = data.lineEnding; }
+          serialManager.updateSettings(partial);
+          this._saveConfig(partial);
+          break;
+        }
+
+        case 'saveSendHistory': {
+          this._saveSendHistory(data.history ?? []);
+          break;
+        }
+
+        case 'saveConfig': {
+          if (data.config) { this._saveConfig(data.config); }
+          break;
+        }
+      }
+    });
   }
 
   // ---- HTML 生成 ----
